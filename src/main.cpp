@@ -1,4 +1,8 @@
 #include <ps5Controller.h>
+#include <CAN.h>
+
+#define TX_GPIO_NUM   5
+#define RX_GPIO_NUM   4
 
 #define PI 3.1415926535897932384626433832795
 #define ROWS 4
@@ -204,7 +208,23 @@ Matrix kinematics(float x, float y, float r) {
   return result;
 }
 
+void sendCan(float input, uint8_t id) {
+  uint8_t floatByte[sizeof(float)];
 
+  memcpy(floatByte, &input, sizeof(float));
+
+  //Serial.print("sending float value ... ");
+  //Serial.print(input);
+ // Serial.print(" with id ");
+  //Serial.println(id);
+
+  CAN.beginPacket(0x01);
+  //CAN.write(id);
+  for (size_t j = 0; j < sizeof(float); j++) {
+    CAN.write(floatByte[j]);
+  }
+  CAN.endPacket();
+}
 
 
 
@@ -214,9 +234,20 @@ Matrix swerveMatrix;
 
 void setup() {
   Serial.begin(921600);
-  ps5.begin("AC:36:1B:D1:64:0D"); //replace with MAC address of your controller
+  while (!Serial); // Optional: Wait for the serial port to be ready
+
+  Serial.println("CAN Sender");
+
+  CAN.setPins (RX_GPIO_NUM, TX_GPIO_NUM);
+
+  // Start the CAN bus at 500 kbps
+  if (!CAN.begin(500E3)) {
+    Serial.println("Starting CAN failed!");
+    while (1); // Halt the program if CAN initialization fails
+  }
+
+  ps5.begin("AC:36:1B:D1:64:0D"); // Replace with the MAC address of your controller
   Serial.println("Ready.");
- // 4c:79:6e:d9:b2:22  //ac:36:1b:d1:64:0d
 
   analogReadResolution(12);
 }
@@ -225,10 +256,17 @@ void loop() {
 
   swerveMatrix = kinematics(getX(), getY(), getR());
   for (uint8_t i = 0; i < 4; i++) {
-      Serial.print("pwr, heading = ");
-      Serial.print(swerveMatrix.modulePower(i));
-      Serial.print(", ");
-      Serial.println(swerveMatrix.moduleHeading(i));
+
+    float theta = swerveMatrix.moduleHeading(i);
+    float power = swerveMatrix.modulePower(i);
+
+    //Serial.print("pwr, heading = ");
+    //Serial.print(power);
+    //Serial.print(", ");
+    //Serial.println(theta);
+
+    sendCan(power, i);
+    sendCan(theta, i);
   }
   Serial.println("-----------------");
   delay(200);
