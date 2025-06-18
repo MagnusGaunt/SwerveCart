@@ -252,6 +252,7 @@ void loop() {
     delay(300);
   }
   
+  //all sent values are doubles
   //module 1
   sendNumber<>(swerveMatrix.moduleHeading(0), 0x01);
   sendNumber<>(swerveMatrix.modulePower(0), 0x02);
