@@ -1,8 +1,9 @@
 #include <ps5Controller.h>
+#include <string.h>
 #include <CAN.h>
 
-#define TX_GPIO_NUM   5
-#define RX_GPIO_NUM   4
+#define RX_GPIO_NUM 21
+#define TX_GPIO_NUM 22
 
 #define PI 3.1415926535897932384626433832795
 #define ROWS 4
@@ -13,7 +14,7 @@
 #define JOYSTICKMAX 128
 #define STICKDRIFT 8
 
-float convertValue(int8_t input, int8_t max, int8_t drift){
+double convertValue(int8_t input, int8_t max, int8_t drift){
   int8_t posOrNeg = -1;
   if (input >= 0){
     input++;
@@ -25,25 +26,25 @@ float convertValue(int8_t input, int8_t max, int8_t drift){
   
   max -= drift;
   input -= drift * posOrNeg;
-  return float(input) / float(max);
+  return double(input) / double(max);
 }
 
-float getX(){
+double getX(){
   return convertValue(ps5.LStickX(), JOYSTICKMAX, STICKDRIFT);
 }
 
-float getY(){
+double getY(){
   return convertValue(ps5.LStickY(), JOYSTICKMAX, STICKDRIFT);
 }
 
-float getR(){
+double getR(){
   return convertValue(ps5.RStickX(), JOYSTICKMAX, STICKDRIFT);
 }
 
 class Matrix {
 
 private:
-  float mat[ROWS][COLS];
+  double mat[ROWS][COLS];
 
 public:
 
@@ -56,7 +57,7 @@ public:
   }
 
   //allows for easy asigning of values
-  Matrix(std::initializer_list<std::initializer_list<float>> list) {
+  Matrix(std::initializer_list<std::initializer_list<double>> list) {
   uint8_t i = 0;
   for (const auto& row : list) {
     uint8_t j = 0;
@@ -69,7 +70,7 @@ public:
 }
 
   //scales a matrix by a value
-  Matrix operator*(const float scale) const{
+  Matrix operator*(const double scale) const{
     Matrix result;
     for (uint8_t i = 0; i < ROWS; i++) {
       for (uint8_t j = 0; j < COLS; j++) {
@@ -100,8 +101,8 @@ public:
   }
 
   //finds the max vector within a matrix
-  float matrixMaxVector() const {
-    float maxVector = 0;
+  double matrixMaxVector() const {
+    double maxVector = 0;
     for (uint8_t i = 0; i < ROWS; i++) {
       maxVector = max(maxVector, modulePower(i));
     }
@@ -109,16 +110,16 @@ public:
   }
 
   //to square things
-  float square(float val) const {
+  double square(double val) const {
     return val * val;
   }
 
   //gives the theta of a module given an x-y Vector
-  float moduleHeading(uint8_t row) const{
-    float x = mat[row][0];
-    float y = mat[row][1];
+  double moduleHeading(uint8_t row) const{
+    double x = mat[row][0];
+    double y = mat[row][1];
     int8_t quad = getQuadrant(x, y);
-    float theta = atan(y/x) * 180 / PI;
+    double theta = atan(y/x) * 180 / PI;
     switch (quad) {
       case 1:
         return theta;
@@ -139,14 +140,14 @@ public:
   }
 
   //gets the vector of the module.
-  float modulePower(uint8_t row) const{
-    float x = mat[row][0];
-    float y = mat[row][1];
+  double modulePower(uint8_t row) const{
+    double x = mat[row][0];
+    double y = mat[row][1];
     return sqrt(square(x) + square(y));
   }
 
   //gets the quadrant which the vector is directed
-  int getQuadrant(float x, float y) const{
+  int getQuadrant(double x, double y) const{
     if (x == 0 && y == 0) {
       return -1;
     }
@@ -164,7 +165,7 @@ public:
 };
 
 //swerve constants
-//float directionMax[row][col] = {
+//double directionMax[row][col] = {
 //  {x, y}, module top left
 //  {x, y}, module top right
 //  {x, y}, module back right
@@ -193,14 +194,14 @@ const Matrix fullR = {
 };
 
 //outputs all of the module vectors in a matrix format
-Matrix kinematics(float x, float y, float r) {
+Matrix kinematics(double x, double y, double r) {
   Matrix result;
 
   result += fullX * x;
   result += fullY * y;
   result += fullR * r;
 
-  float matrixMaxVector = result.matrixMaxVector();
+  double matrixMaxVector = result.matrixMaxVector();
   if (matrixMaxVector > 1) {
     return result*(1.0 / matrixMaxVector);
   }
@@ -208,35 +209,23 @@ Matrix kinematics(float x, float y, float r) {
   return result;
 }
 
-void sendCan(float input, uint8_t id) {
-  uint8_t floatByte[sizeof(float)];
-
-  memcpy(floatByte, &input, sizeof(float));
-
-  //Serial.print("sending float value ... ");
-  //Serial.print(input);
- // Serial.print(" with id ");
-  //Serial.println(id);
-
-  CAN.beginPacket(0x01);
-  //CAN.write(id);
-  for (size_t j = 0; j < sizeof(float); j++) {
-    CAN.write(floatByte[j]);
-  }
-  CAN.endPacket();
+template <typename T>
+void sendNumber(T input, int PacketId) {
+    char data[sizeof(T)];
+    memcpy(data,&input,sizeof(T));
+    CAN.beginPacket(PacketId);
+    for (int i = 0; i < sizeof(T); ++i){
+      CAN.write(data[i]);
+    }
+    CAN.endPacket();
 }
-
-
 
 //RunnerCode
 
-Matrix swerveMatrix;
-
 void setup() {
-  Serial.begin(921600);
-  while (!Serial); // Optional: Wait for the serial port to be ready
-
-  Serial.println("CAN Sender");
+  Serial.begin(115200);
+  while (!Serial){
+  } // Optional: Wait for the serial port to be ready
 
   CAN.setPins (RX_GPIO_NUM, TX_GPIO_NUM);
 
@@ -253,21 +242,28 @@ void setup() {
 }
 
 void loop() {
-
+  static Matrix swerveMatrix;
   swerveMatrix = kinematics(getX(), getY(), getR());
-  for (uint8_t i = 0; i < 4; i++) {
 
-    float theta = swerveMatrix.moduleHeading(i);
-    float power = swerveMatrix.modulePower(i);
-
-    //Serial.print("pwr, heading = ");
-    //Serial.print(power);
-    //Serial.print(", ");
-    //Serial.println(theta);
-
-    sendCan(power, i);
-    sendCan(theta, i);
+  while (!ps5.isConnected()) { // commented out as ps5 controller seems to connect quicker when microcontroller is doing nothing
+    Serial.println("PS5 controller not found");
+    CAN.beginPacket(0x00);
+    CAN.endPacket();
+    delay(300);
   }
-  Serial.println("-----------------");
+  
+  //module 1
+  sendNumber<>(swerveMatrix.moduleHeading(0), 0x01);
+  sendNumber<>(swerveMatrix.modulePower(0), 0x02);
+  //module 2
+  sendNumber<>(swerveMatrix.moduleHeading(1), 0x03);
+  sendNumber<>(swerveMatrix.modulePower(1), 0x04);
+  //module 3
+  sendNumber<>(swerveMatrix.moduleHeading(2), 0x05);
+  sendNumber<>(swerveMatrix.modulePower(2), 0x06);
+  //module 4
+  sendNumber<>(swerveMatrix.moduleHeading(3), 0x07);
+  sendNumber<>(swerveMatrix.modulePower(3), 0x08);
+
   delay(200);
 }
