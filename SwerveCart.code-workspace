@@ -8,5 +8,9 @@
 			"path": "../CAN Reciever"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"numeric": "cpp"
+		}
+	}
 }
