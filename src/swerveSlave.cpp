@@ -28,8 +28,8 @@ constexpr int scl {5};
 //pid
 
 constexpr double Kp {.01};
-constexpr double Ki {10000};
-double Kd {1};
+constexpr double Ki {1};
+double Kd {10000};
 
 template <typename T>
 T getNum(){
